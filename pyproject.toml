@@ -1,0 +1,23 @@
+[project]
+name = "bracketbot-ai"
+version = "0.0.1"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "kaldi-native-fbank>=1.21.3",
+    "onnxslim>=0.1.63",
+    "rknn-toolkit-lite2>=2.3.2",
+    "rknn-toolkit2>=2.3.2",
+    "sentencepiece>=0.2.0",
+    "setuptools>=80.9.0",
+    "mjpeg-streamer>=2024.2.8",
+    "sounddevice>=0.5.2",
+    "soundfile>=0.13.1",
+]
+
+[project.scripts]
+from_onnx = "scripts.from_onnx:main"
+
+[tool.setuptools.packages.find]
+include = ["bracketbot_ai"]
