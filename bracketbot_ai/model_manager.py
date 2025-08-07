@@ -111,6 +111,7 @@ def ensure_model(model_name: str) -> Path:
             if temp_archive.exists():
                 temp_archive.unlink()
 
+    model_dir = MODELS_DIR / model_name if (MODELS_DIR / model_name).is_dir() else MODELS_DIR
     return model_dir, model_file
 
 def list_available_models() -> Dict[str, List[str]]:

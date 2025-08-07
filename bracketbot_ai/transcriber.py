@@ -16,12 +16,10 @@ import numpy as np
 import scipy.signal
 from rknnlite.api import RKNNLite
 
-from .model_manager import ensure_model
-
-# Input scaling to avoid fp16 overflow
-SPEECH_SCALE = 0.5
+from bracketbot_ai.model_manager import ensure_model
 
 class WavFrontend:
+    # lovemefan, lovemefan@outlook.com https://huggingface.co/happyme531/SenseVoiceSmall-RKNN2/blob/main/sensevoice_rknn.py
     """Conventional frontend structure for ASR with streaming support."""
 
     def __init__(
@@ -260,14 +258,13 @@ class TranscriptionResults:
 class Transcriber:
     """SenseVoice Speech-to-Text Transcriber"""
     
-    def __init__(self, device=0, verbose=True, 
+    def __init__(self, device=0, verbose=False, 
                  chunk_duration=4.0):
         self.device = device
         self.verbose = verbose
         
         # Audio parameters
         self.sample_rate = 16000
-        self.audio_device = 2  # ReSpeaker Lite audio input device
         self.chunk_duration = chunk_duration
         self.chunk_samples = int(chunk_duration * self.sample_rate)
         
@@ -276,22 +273,14 @@ class Transcriber:
         self.recent_transcriptions = []
         self.max_recent = 5
         
-        # Model paths
-        self.model_path = MODEL_FILE
-        
-        # Models
-        self.embedding = None
-        self.sp = None
-        self.frontend = None
-        self.rknn = None
-        
         # Ensure SenseVoice model is available
-        model_name = "SenseVoiceSmall-RKNN2"
+        model_name = "SenseVoiceSmall"
         model_dir, self.model_path = ensure_model(model_name)
         self.embedding = np.load(str(model_dir / "embedding.npy"))
         self.sp = spm.SentencePieceProcessor()
         self.sp.load(str(model_dir / "chn_jpn_yue_eng_ko_spectok.bpe.model"))
         self.frontend = WavFrontend(str(model_dir / "am.mvn"))
+        self.rknn = None
         self._load_model()
     
     def _load_model(self):
@@ -314,6 +303,7 @@ class Transcriber:
     
     def __call__(self, chunk, language=0, use_itn=False):
         """Process single audio chunk using streaming frontend"""
+        chunk = chunk.flatten()
         speed = {}
         t1 = time.time()
         
@@ -321,12 +311,11 @@ class Transcriber:
         self.frontend.reset_status()
         
         # Apply input scaling
-        scaled_audio = chunk * SPEECH_SCALE
         speed['preprocessing'] = (time.time() - t1) * 1000
         
         # Add chunk to frontend's streaming buffer
         t1 = time.time()
-        inference_ready = self.frontend.accept_waveform(scaled_audio)
+        inference_ready = self.frontend.accept_waveform(chunk)
         speed['buffering'] = (time.time() - t1) * 1000
         
         if not inference_ready:
@@ -379,23 +368,14 @@ class Transcriber:
                 text_norm_query = self.embedding[[[14 if use_itn else 15]]]
                 event_emo_query = self.embedding[[[1, 2]]]
                 
-                # Scale the speech features as in original SenseVoice (important!)
-                scaled_features = features * SPEECH_SCALE
-                
                 # Concatenate embeddings with features (axis=1 is sequence dimension)
                 input_content = np.concatenate([
                     language_query,      # 1 frame
                     event_emo_query,     # 2 frames  
                     text_norm_query,     # 1 frame
-                    scaled_features      # 684 frames
+                    features      # 684 frames
                 ], axis=1).astype(np.float32)
                 
-                if self.verbose:
-                    print(f"Language query shape: {language_query.shape}")
-                    print(f"Event/emo query shape: {event_emo_query.shape}")
-                    print(f"Text norm query shape: {text_norm_query.shape}")
-                    print(f"Scaled features shape: {scaled_features.shape}")
-                    print(f"Concatenated input shape: {input_content.shape}")
                 
                 # Pad to expected input length (171 from RKNN_INPUT_LEN)
                 RKNN_INPUT_LEN = 171
@@ -405,19 +385,11 @@ class Transcriber:
                 elif input_content.shape[1] > RKNN_INPUT_LEN:
                     input_content = input_content[:, :RKNN_INPUT_LEN, :]
                 
-                if self.verbose:
-                    print(f"Final input shape: {input_content.shape}")
-                
                 # Run RKNN inference
                 outputs = self.rknn.inference(inputs=[input_content])
             else:
                 # Fallback to direct inference if no embeddings
                 outputs = self.rknn.inference(inputs=[features])
-            
-            # Debug: print output shapes
-            if self.verbose:
-                for i, output in enumerate(outputs):
-                    print(f"Output {i} shape: {output.shape}, dtype: {output.dtype}, min: {output.min():.3f}, max: {output.max():.3f}")
             
             # Basic decoding - just use the first output and decode tokens
             if len(outputs) > 0:
@@ -432,32 +404,19 @@ class Transcriber:
                     out = out[out != 0]  # Remove blank tokens (blank_id = 0)
                     return out.tolist()
                 
-                # Debug the output shape and try different decoding approaches
-                if self.verbose:
-                    print(f"Encoder output shape: {encoder_out.shape}")
-                
                 # Try different output shapes based on SenseVoice format
                 if len(encoder_out.shape) == 3:
                     # Most likely shape is (1, vocab_size, sequence_length)
                     # Following the original: encoder_out[0].argmax(axis=0)
                     argmax_tokens = encoder_out[0].argmax(axis=0)
                     
-                    if self.verbose:
-                        print(f"All argmax tokens: {argmax_tokens.tolist()}")
-                        print(f"Non-zero tokens: {argmax_tokens[argmax_tokens != 0].tolist()}")
-                    
                     hypos = unique_consecutive(argmax_tokens)
-                    
-                    if self.verbose:
-                        print(f"After unique_consecutive: {hypos[:50]}...")  # Show first 50 tokens
                 else:
                     hypos = unique_consecutive(encoder_out.flatten())
                 
                 # Convert tokens to text using SentencePiece if available
                 if self.sp is not None and len(hypos) > 0:
                     raw_text = self.sp.DecodeIds(hypos)
-                    if self.verbose:
-                        print(f"Raw SentencePiece output: '{raw_text}'")
                 else:
                     # Fallback - show token sequence
                     raw_text = f"<|{language}|><|woitn|>Tokens: {hypos[:20]}..."  # Show first 20 tokens
@@ -646,6 +605,7 @@ def main():
                     
                     try:
                         chunk = chunk.astype(np.float32)
+                        print(chunk.shape)
                         results = model(chunk)
                         if results and results.text.strip():
                             all_results.append(results)

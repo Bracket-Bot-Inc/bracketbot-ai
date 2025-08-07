@@ -15,8 +15,8 @@ import cv2
 # Download a sample image
 subprocess.run(["wget", "https://picsum.photos/id/88/200/300", "-O", "test.jpg"])
 
-detector = Detector("yolo11s")
+detector = Detector("yolo11s", device=0)
 img = cv2.imread("test.jpg")
-results = detector(img)
+results = detector(img, conf=0.35, iou=0.1)
 print("Number of detections: ", len(results))
 cv2.imwrite("test_result.jpg", results.plot())

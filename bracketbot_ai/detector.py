@@ -12,7 +12,7 @@ import numpy as np
 import cv2
 from rknnlite.api import RKNNLite
 
-from .model_manager import ensure_model
+from bracketbot_ai.model_manager import ensure_model
 
 
 COCO_NAMES = [
