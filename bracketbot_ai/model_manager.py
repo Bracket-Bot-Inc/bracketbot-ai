@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Model Manager - Lazy downloading and management of AI models"""
 
+import tarfile
 import subprocess
 import sys
 import hashlib
@@ -58,17 +59,9 @@ def extract_archive(archive_path: Path, extract_to: Path) -> bool:
     """Extract tar.gz archive"""
     try:
         print(f"📦 Extracting: {archive_path.name}")
-        
-        cmd = ["tar", "-xzf", str(archive_path), "-C", str(extract_to)]
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        
-        if result.returncode == 0:
-            print(f"✅ Extracted: {archive_path.name}")
-            return True
-        else:
-            print(f"❌ Extraction failed: {result.stderr.strip()}")
-            return False
-            
+        tar = tarfile.open(archive_path)
+        tar.extractall(extract_to)
+        tar.close()
     except Exception as e:
         print(f"❌ Extraction error: {e}")
         return False
