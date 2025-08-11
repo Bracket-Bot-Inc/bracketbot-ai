@@ -7,18 +7,21 @@ requires-python = ">=3.11"
 dependencies = [
     "kaldi-native-fbank>=1.21.3",
     "rknn-toolkit-lite2>=2.3.2",
+    "sentencepiece>=0.2.0"
 ]
 
 [project.optional-dependencies]
 onnx = [
     "rknn-toolkit2>=2.3.2",
-    "sentencepiece>=0.2.0",
     "onnxslim>=0.1.63",
     "setuptools>=80.9.0",
+]
+examples = [
     "mjpeg-streamer>=2024.2.8",
     "sounddevice>=0.5.2",
     "soundfile>=0.13.1",
 ]
+
 
 [project.scripts]
 from_onnx = "scripts.from_onnx:main"

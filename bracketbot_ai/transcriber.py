@@ -13,7 +13,6 @@ from dataclasses import dataclass, field
 import kaldi_native_fbank as knf
 import sentencepiece as spm
 import numpy as np
-import scipy.signal
 from rknnlite.api import RKNNLite
 
 from bracketbot_ai.model_manager import ensure_model
@@ -245,9 +244,10 @@ class TranscriptionResults:
     speed: Dict[str, float] = field(default_factory=dict)
     chunk_id: Optional[int] = None
     timestamp: Optional[datetime] = None
+    sequence_length: int = 0
     
     def __repr__(self): 
-        return f"TranscriptionResults(text='{self.text[:50]}...', segments={len(self.segments)})"
+        return f"TranscriptionResults(text='{self.text[:50]}...', segments={len(self.segments)}, seq_len={self.sequence_length})"
     
     def __len__(self): 
         return len(self.segments)
@@ -259,9 +259,10 @@ class Transcriber:
     """SenseVoice Speech-to-Text Transcriber"""
     
     def __init__(self, device=0, verbose=False, 
-                 chunk_duration=4.0):
+                 chunk_duration=4.0, context_chunk_count=2):
         self.device = device
         self.verbose = verbose
+        self.context_chunk_count = context_chunk_count
         
         # Audio parameters
         self.sample_rate = 16000
@@ -308,7 +309,9 @@ class Transcriber:
         t1 = time.time()
         
         # Reset frontend state to treat this chunk independently
-        self.frontend.reset_status()
+        if self.chunk_count == 0:
+            self.frontend.reset_status()
+        self.chunk_count = (self.chunk_count + 1) % self.context_chunk_count
         
         # Apply input scaling
         speed['preprocessing'] = (time.time() - t1) * 1000
@@ -337,7 +340,7 @@ class Transcriber:
                     timestamp=datetime.now()
                 )
         except Exception as e:
-            return TranscriptionResults(text=f"Feature extraction error: {e}")
+            return TranscriptionResults(text=f"Feature extraction error: {e}", sequence_length=0)
         
         speed['feature_extraction'] = (time.time() - t1) * 1000
         
@@ -424,7 +427,7 @@ class Transcriber:
                 raw_text = f"<|{language}|><|woitn|>No output from model"
                 
         except Exception as e:
-            return TranscriptionResults(text=f"Inference error: {e}")
+            return TranscriptionResults(text=f"Inference error: {e}", sequence_length=0)
         
         speed['inference'] = (time.time() - t1) * 1000
         
@@ -463,6 +466,8 @@ class Transcriber:
             self.rknn.release()
 
 def main():
+
+    import scipy.signal
     import sounddevice as sd
     import soundfile as sf
     parser = argparse.ArgumentParser(description="BracketBot AI Speech Transcriber")
