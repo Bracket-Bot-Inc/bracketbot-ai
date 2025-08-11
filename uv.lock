@@ -117,9 +117,13 @@ version = "0.0.1"
 source = { virtual = "." }
 dependencies = [
     { name = "kaldi-native-fbank" },
+    { name = "rknn-toolkit-lite2" },
+]
+
+[package.optional-dependencies]
+onnx = [
     { name = "mjpeg-streamer" },
     { name = "onnxslim" },
-    { name = "rknn-toolkit-lite2" },
     { name = "rknn-toolkit2" },
     { name = "sentencepiece" },
     { name = "setuptools" },
@@ -130,15 +134,16 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "kaldi-native-fbank", specifier = ">=1.21.3" },
-    { name = "mjpeg-streamer", specifier = ">=2024.2.8" },
-    { name = "onnxslim", specifier = ">=0.1.63" },
+    { name = "mjpeg-streamer", marker = "extra == 'onnx'", specifier = ">=2024.2.8" },
+    { name = "onnxslim", marker = "extra == 'onnx'", specifier = ">=0.1.63" },
     { name = "rknn-toolkit-lite2", specifier = ">=2.3.2" },
-    { name = "rknn-toolkit2", specifier = ">=2.3.2" },
-    { name = "sentencepiece", specifier = ">=0.2.0" },
-    { name = "setuptools", specifier = ">=80.9.0" },
-    { name = "sounddevice", specifier = ">=0.5.2" },
-    { name = "soundfile", specifier = ">=0.13.1" },
+    { name = "rknn-toolkit2", marker = "extra == 'onnx'", specifier = ">=2.3.2" },
+    { name = "sentencepiece", marker = "extra == 'onnx'", specifier = ">=0.2.0" },
+    { name = "setuptools", marker = "extra == 'onnx'", specifier = ">=80.9.0" },
+    { name = "sounddevice", marker = "extra == 'onnx'", specifier = ">=0.5.2" },
+    { name = "soundfile", marker = "extra == 'onnx'", specifier = ">=0.13.1" },
 ]
+provides-extras = ["onnx"]
 
 [[package]]
 name = "cffi"
