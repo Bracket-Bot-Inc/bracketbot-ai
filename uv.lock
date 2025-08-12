@@ -118,6 +118,7 @@ source = { virtual = "." }
 dependencies = [
     { name = "kaldi-native-fbank" },
     { name = "rknn-toolkit-lite2" },
+    { name = "sentencepiece" },
 ]
 
 [package.optional-dependencies]
@@ -125,7 +126,6 @@ onnx = [
     { name = "mjpeg-streamer" },
     { name = "onnxslim" },
     { name = "rknn-toolkit2" },
-    { name = "sentencepiece" },
     { name = "setuptools" },
     { name = "sounddevice" },
     { name = "soundfile" },
@@ -138,7 +138,7 @@ requires-dist = [
     { name = "onnxslim", marker = "extra == 'onnx'", specifier = ">=0.1.63" },
     { name = "rknn-toolkit-lite2", specifier = ">=2.3.2" },
     { name = "rknn-toolkit2", marker = "extra == 'onnx'", specifier = ">=2.3.2" },
-    { name = "sentencepiece", marker = "extra == 'onnx'", specifier = ">=0.2.0" },
+    { name = "sentencepiece", specifier = ">=0.2.0" },
     { name = "setuptools", marker = "extra == 'onnx'", specifier = ">=80.9.0" },
     { name = "sounddevice", marker = "extra == 'onnx'", specifier = ">=0.5.2" },
     { name = "soundfile", marker = "extra == 'onnx'", specifier = ">=0.13.1" },

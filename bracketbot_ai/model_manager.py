@@ -65,6 +65,7 @@ def extract_archive(archive_path: Path, extract_to: Path) -> bool:
     except Exception as e:
         print(f"❌ Extraction error: {e}")
         return False
+    return True
 
 def ensure_model(model_name: str) -> Path:
     """Ensure model files are available, download if missing"""
@@ -90,10 +91,8 @@ def ensure_model(model_name: str) -> Path:
         
         try:
             if not fetch_model(download_url, temp_archive):
-                print(f"❌ Error downloading model '{model_name}': {e}")
                 return []
             if not extract_archive(temp_archive, MODELS_DIR):
-                print(f"❌ Error extracting model '{model_name}': {e}")
                 return []
             print(f"✅ Audio model '{model_name}' successfully installed")
             

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """BracketBot AI Transcriber - SenseVoice RKNN inference for speech-to-text"""
-
+import logging
 import argparse
 import sys
 import time
@@ -17,9 +17,88 @@ from rknnlite.api import RKNNLite
 
 from bracketbot_ai.model_manager import ensure_model
 
+SPEECH_SCALE = 0.5
+RKNN_INPUT_LEN = 171
+
+class SenseVoiceInferenceSession:
+    def __init__(
+        self,
+        embedding_model_file,
+        encoder_model_file,
+        bpe_model_file,
+        device_id=-1,
+        intra_op_num_threads=4,
+    ):
+        logging.info(f"Loading model from {embedding_model_file}")
+
+        self.embedding = np.load(embedding_model_file)
+        logging.info(f"Loading model {encoder_model_file}")
+        start = time.time()
+        self.encoder = RKNNLite(verbose=False)
+        self.encoder.load_rknn(encoder_model_file)
+        self.encoder.init_runtime()
+
+        logging.info(
+            f"Loading {encoder_model_file} takes {time.time() - start:.2f} seconds"
+        )
+        self.blank_id = 0
+        self.sp = spm.SentencePieceProcessor()
+        self.sp.load(bpe_model_file)
+
+    def __call__(self, speech, language: int, use_itn: bool) -> np.ndarray:
+        language_query = self.embedding[[[language]]]
+
+        # 14 means with itn, 15 means without itn
+        text_norm_query = self.embedding[[[14 if use_itn else 15]]]
+        event_emo_query = self.embedding[[[1, 2]]]
+
+        # scale the speech
+        speech = speech * SPEECH_SCALE
+        
+        input_content = np.concatenate(
+            [
+                language_query,
+                event_emo_query,
+                text_norm_query,
+                speech,
+            ],
+            axis=1,
+        ).astype(np.float32)
+        print(input_content.shape)
+        # pad [1, len, ...] to [1, RKNN_INPUT_LEN, ... ]
+        input_content = np.pad(input_content, ((0, 0), (0, RKNN_INPUT_LEN - input_content.shape[1]), (0, 0)))
+        print("padded shape:", input_content.shape)
+        start_time = time.time()
+        encoder_out = self.encoder.inference(inputs=[input_content])[0]
+        end_time = time.time()
+        print(f"encoder inference time: {end_time - start_time:.2f} seconds")
+        # print(encoder_out)
+        def unique_consecutive(arr):
+            if len(arr) == 0:
+                return arr
+            # Create a boolean mask where True indicates the element is different from the previous one
+            mask = np.append([True], arr[1:] != arr[:-1])
+            out = arr[mask]
+            out = out[out != self.blank_id]
+            return out.tolist()
+        
+        #现在shape变成了1, n_vocab, n_seq. 这里axis需要改一下
+        # hypos = unique_consecutive(encoder_out[0].argmax(axis=-1))
+        hypos = unique_consecutive(encoder_out[0].argmax(axis=0))
+        text = self.sp.DecodeIds(hypos)
+        return text
+# ```
+
+# File: utils/frontend.py
+# ```py
+# -*- coding:utf-8 -*-
+# @FileName  :frontend.py
+# @Time      :2024/7/18 09:39
+# @Author    :lovemefan
+# @Email     :lovemefan@outlook.com
+
 class WavFrontend:
-    # lovemefan, lovemefan@outlook.com https://huggingface.co/happyme531/SenseVoiceSmall-RKNN2/blob/main/sensevoice_rknn.py
-    """Conventional frontend structure for ASR with streaming support."""
+    """Conventional frontend structure for ASR."""
 
     def __init__(
         self,
@@ -55,70 +134,10 @@ class WavFrontend:
         self.fbank_fn = None
         self.fbank_beg_idx = 0
         self.reset_status()
-        
-        # Minimum frames required before processing
-        # SenseVoice needs sufficient context for good recognition, but max 167 speech frames
-        self.min_frames_for_inference = 30  # Lower threshold to process more chunks
 
     def reset_status(self):
         self.fbank_fn = knf.OnlineFbank(self.opts)
         self.fbank_beg_idx = 0
-
-    def accept_waveform(self, waveform: np.ndarray) -> bool:
-        """
-        Add new waveform data to the streaming frontend.
-        Returns True if enough frames are available for inference.
-        """
-        waveform = waveform * (1 << 15)
-        self.fbank_fn.accept_waveform(self.opts.frame_opts.samp_freq, waveform.tolist())
-        return self.fbank_fn.num_frames_ready >= self.min_frames_for_inference
-
-    def get_streaming_features(self) -> Tuple[np.ndarray, int]:
-        """
-        Get features from the streaming frontend if enough frames are available.
-        Returns features and number of new frames processed.
-        """
-        frames_ready = self.fbank_fn.num_frames_ready
-        
-        if frames_ready < self.min_frames_for_inference:
-            return None, 0
-        
-        # Get all available frames
-        mat = np.empty([frames_ready, self.opts.mel_opts.num_bins], dtype=np.float32)
-        for i in range(frames_ready):
-            mat[i, :] = self.fbank_fn.get_frame(i)
-        
-        feat = mat.astype(np.float32)
-        
-        # Apply LFR and CMVN
-        feat = self.apply_lfr(feat, self.lfr_m, self.lfr_n)
-        if self.cmvn_file:
-            feat = self.apply_cmvn(feat)
-        
-        # Ensure final output is float32
-        feat = feat.astype(np.float32)
-        
-        # Pad or truncate to match SenseVoice input requirements
-        # SenseVoice concatenates: language_query(1) + event_emo_query(2) + text_norm_query(1) + speech
-        # Total must fit in RKNN_INPUT_LEN (171), so speech should be <= 167 frames
-        max_speech_frames = 167
-        current_frames = feat.shape[0]
-        
-        if current_frames < max_speech_frames:
-            # Pad with zeros to reach reasonable size for speech recognition
-            target_frames = min(max_speech_frames, max(current_frames, 100))  # At least 100 frames for context
-            if target_frames > current_frames:
-                padding = np.zeros((target_frames - current_frames, feat.shape[1]), dtype=np.float32)
-                feat = np.vstack([feat, padding])
-        elif current_frames > max_speech_frames:
-            # Truncate to max allowed speech frames
-            feat = feat[:max_speech_frames]
-        
-        # Update beginning index for next call
-        new_frames = frames_ready - self.fbank_beg_idx
-        self.fbank_beg_idx = frames_ready
-        
-        return feat, new_frames
 
     def fbank(self, waveform: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         waveform = waveform * (1 << 15)
@@ -143,7 +162,6 @@ class WavFrontend:
         return feat, feat_len
 
     def load_audio(self, filename: str) -> Tuple[np.ndarray, int]:
-        import soundfile as sf
         data, sample_rate = sf.read(
             filename,
             always_2d=True,
@@ -187,19 +205,13 @@ class WavFrontend:
         """
         Apply CMVN with mvn data
         """
-        # Ensure inputs are float32
-        inputs = inputs.astype(np.float32)
         frame, dim = inputs.shape
-        
-        # Convert CMVN data to float32 to avoid dtype promotion
-        means = np.tile(self.cmvn[0:1, :dim], (frame, 1)).astype(np.float32)
-        vars = np.tile(self.cmvn[1:2, :dim], (frame, 1)).astype(np.float32)
-        
-        # Apply CMVN and ensure result is float32
-        result = (inputs + means) * vars
-        return result.astype(np.float32)
+        means = np.tile(self.cmvn[0:1, :dim], (frame, 1))
+        vars = np.tile(self.cmvn[1:2, :dim], (frame, 1))
+        inputs = (inputs + means) * vars
+        return inputs
 
-    def get_features(self, inputs: Union[str, np.ndarray]) -> Tuple[np.ndarray, int]:
+    def get_features(self, inputs: Union[str, np.ndarray]) -> np.ndarray:
         if isinstance(inputs, str):
             inputs, _ = self.load_audio(inputs)
 
@@ -234,7 +246,6 @@ class WavFrontend:
         vars = np.array(vars_list).astype(np.float64)
         cmvn = np.array([means, vars])
         return cmvn
-
 @dataclass
 class TranscriptionResults:
     """Transcription results container"""
@@ -259,10 +270,9 @@ class Transcriber:
     """SenseVoice Speech-to-Text Transcriber"""
     
     def __init__(self, device=0, verbose=False, 
-                 chunk_duration=4.0, context_chunk_count=2):
+                 chunk_duration=4.0):
         self.device = device
         self.verbose = verbose
-        self.context_chunk_count = context_chunk_count
         
         # Audio parameters
         self.sample_rate = 16000
@@ -277,193 +287,74 @@ class Transcriber:
         # Ensure SenseVoice model is available
         model_name = "SenseVoiceSmall"
         model_dir, self.model_path = ensure_model(model_name)
-        self.embedding = np.load(str(model_dir / "embedding.npy"))
-        self.sp = spm.SentencePieceProcessor()
-        self.sp.load(str(model_dir / "chn_jpn_yue_eng_ko_spectok.bpe.model"))
         self.frontend = WavFrontend(str(model_dir / "am.mvn"))
-        self.rknn = None
-        self._load_model()
-    
-    def _load_model(self):
-        """Load SenseVoice models"""
-        try:
-            self.rknn = RKNNLite()
-            ret = self.rknn.load_rknn(str(self.model_path))
-            if ret != 0: 
-                raise RuntimeError(f"Failed to load RKNN model: {ret}")
-            
-            core_mask = 0b111 if self.device == -1 else (1 << self.device)
-            ret = self.rknn.init_runtime(core_mask=core_mask)
-            if ret != 0: 
-                raise RuntimeError(f"Failed to init RKNN runtime: {ret}")
-            if self.verbose:
-                print(f"✓ Transcriber loaded: {self.model_path.name} on NPU device {self.device}")
-                
-        except Exception as e:
-            raise RuntimeError(f"Failed to load SenseVoice models: {e}")
+        self.asr = SenseVoiceInferenceSession(
+            str(model_dir / "embedding.npy"),
+            str(model_dir / "SenseVoiceSmall.rknn"),
+            str(model_dir / "chn_jpn_yue_eng_ko_spectok.bpe.model")
+        )
     
     def __call__(self, chunk, language=0, use_itn=False):
         """Process single audio chunk using streaming frontend"""
         chunk = chunk.flatten()
         speed = {}
+        # Get features from streaming frontend
         t1 = time.time()
-        
-        # Reset frontend state to treat this chunk independently
-        if self.chunk_count == 0:
-            self.frontend.reset_status()
-        self.chunk_count = (self.chunk_count + 1) % self.context_chunk_count
-        
-        # Apply input scaling
-        speed['preprocessing'] = (time.time() - t1) * 1000
-        
-        # Add chunk to frontend's streaming buffer
-        t1 = time.time()
-        inference_ready = self.frontend.accept_waveform(chunk)
-        speed['buffering'] = (time.time() - t1) * 1000
-        
-        if not inference_ready:
-            # Not enough frames yet, return empty result
+        #chunk = chunk * SPEECH_SCALE
+        features = self.frontend.get_features(chunk)
+        if len(features) == 0:
             return TranscriptionResults(
                 text="",
                 speed=speed,
                 timestamp=datetime.now()
             )
         
-        # Get features from streaming frontend
-        t1 = time.time()
-        try:
-            features, new_frames = self.frontend.get_streaming_features()
-            if features is None or new_frames == 0:
-                return TranscriptionResults(
-                    text="",
-                    speed=speed,
-                    timestamp=datetime.now()
-                )
-        except Exception as e:
-            return TranscriptionResults(text=f"Feature extraction error: {e}", sequence_length=0)
-        
-        speed['feature_extraction'] = (time.time() - t1) * 1000
-        
-        # Run inference
-        t1 = time.time()
         if len(features.shape) == 2:
-            features = features[np.newaxis, ...]  # Add batch dimension
-        
-        # Verify features have reasonable shape for SenseVoice
-        if len(features.shape) != 3 or features.shape[0] != 1:
-            return TranscriptionResults(text=f"Feature shape error: expected (1, frames, 560), got {features.shape}")
-        
-        if features.shape[2] != 560:
-            return TranscriptionResults(text=f"Feature dimension error: expected 560 features, got {features.shape[2]}")
-        
-        if features.shape[1] > 167:
-            return TranscriptionResults(text=f"Too many frames: got {features.shape[1]}, max 167 for speech")
-        
-        # Features should already be float32 from the frontend pipeline
-        assert features.dtype == np.float32, f"Expected float32 features, got {features.dtype}"
-        
-        try:
-            # SenseVoice inference with proper embedding concatenation
-            if self.embedding is not None:
-                # Add language, event/emotion, and text normalization embeddings as in original
-                language_query = self.embedding[[[language]]]
-                # 14 means with itn, 15 means without itn
-                text_norm_query = self.embedding[[[14 if use_itn else 15]]]
-                event_emo_query = self.embedding[[[1, 2]]]
-                
-                # Concatenate embeddings with features (axis=1 is sequence dimension)
-                input_content = np.concatenate([
-                    language_query,      # 1 frame
-                    event_emo_query,     # 2 frames  
-                    text_norm_query,     # 1 frame
-                    features      # 684 frames
-                ], axis=1).astype(np.float32)
-                
-                
-                # Pad to expected input length (171 from RKNN_INPUT_LEN)
-                RKNN_INPUT_LEN = 171
-                if input_content.shape[1] < RKNN_INPUT_LEN:
-                    padding_needed = RKNN_INPUT_LEN - input_content.shape[1]
-                    input_content = np.pad(input_content, ((0, 0), (0, padding_needed), (0, 0)))
-                elif input_content.shape[1] > RKNN_INPUT_LEN:
-                    input_content = input_content[:, :RKNN_INPUT_LEN, :]
-                
-                # Run RKNN inference
-                outputs = self.rknn.inference(inputs=[input_content])
-            else:
-                # Fallback to direct inference if no embeddings
-                outputs = self.rknn.inference(inputs=[features])
-            
-            # Basic decoding - just use the first output and decode tokens
-            if len(outputs) > 0:
-                encoder_out = outputs[0]
-                
-                # Simple argmax decoding
-                def unique_consecutive(arr):
-                    if len(arr) == 0:
-                        return arr
-                    mask = np.append([True], arr[1:] != arr[:-1])
-                    out = arr[mask]
-                    out = out[out != 0]  # Remove blank tokens (blank_id = 0)
-                    return out.tolist()
-                
-                # Try different output shapes based on SenseVoice format
-                if len(encoder_out.shape) == 3:
-                    # Most likely shape is (1, vocab_size, sequence_length)
-                    # Following the original: encoder_out[0].argmax(axis=0)
-                    argmax_tokens = encoder_out[0].argmax(axis=0)
-                    
-                    hypos = unique_consecutive(argmax_tokens)
-                else:
-                    hypos = unique_consecutive(encoder_out.flatten())
-                
-                # Convert tokens to text using SentencePiece if available
-                if self.sp is not None and len(hypos) > 0:
-                    raw_text = self.sp.DecodeIds(hypos)
-                else:
-                    # Fallback - show token sequence
-                    raw_text = f"<|{language}|><|woitn|>Tokens: {hypos[:20]}..."  # Show first 20 tokens
-            else:
-                raw_text = f"<|{language}|><|woitn|>No output from model"
-                
-        except Exception as e:
-            return TranscriptionResults(text=f"Inference error: {e}", sequence_length=0)
-        
-        speed['inference'] = (time.time() - t1) * 1000
-        
-        # Parse output (postprocess)
+            features = features[np.newaxis, ...]
+
+        speed['feature_extraction'] = (time.time() - t1) * 1000
+        print(features.shape)
+
         t1 = time.time()
-        if not raw_text:
-            text = ""
-        elif '<|woitn|>' in raw_text:
-            parts = raw_text.split('<|woitn|>')
-            text = parts[1].strip() if len(parts) > 1 else ""
-            # Check if it's actual speech
-            if '<|nospeech|>' in raw_text:
-                text = ""
-            elif not text:
-                text = ""
-        else:
-            # Fallback - return cleaned raw text
-            cleaned = raw_text.strip()
-            if cleaned and cleaned != "[no speech]":
-                text = cleaned
-            else:
-                text = ""
-        
+        raw_text = self.asr(
+            features,
+            language=0,  # Auto-detect
+            use_itn=False
+        )
+        speed['inference'] = (time.time() - t1) * 1000
+        t1 = time.time()
+        text = self._parse_output(raw_text)
         speed['postprocessing'] = (time.time() - t1) * 1000
         
         return TranscriptionResults(
             text=text,
-            duration=new_frames * 0.01,  # Assuming 10ms frame shift
+            duration=features.shape[0] * 0.01,  # Assuming 10ms frame shift
             speed=speed,
             timestamp=datetime.now()
         )
-    
-    def __del__(self):
-        """Cleanup resources"""
-        if hasattr(self, 'rknn') and self.rknn:
-            self.rknn.release()
+    def _parse_output(self, raw_text):
+        """Parse ASR output to extract clean text"""
+        if not raw_text:
+            return ""
+            
+        # Extract text after <|woitn|>
+        if '<|woitn|>' in raw_text:
+            parts = raw_text.split('<|woitn|>')
+            text = parts[1].strip() if len(parts) > 1 else ""
+            
+            # Check if it's actual speech
+            if '<|nospeech|>' in raw_text:
+                return ""
+            elif text:
+                return text
+            else:
+                return ""
+        else:
+            # Fallback
+            cleaned = raw_text.strip()
+            if cleaned and cleaned != "[no speech]":
+                return cleaned
+            return ""
 
 def main():
 
