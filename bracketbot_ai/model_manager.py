@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Model Manager - Lazy downloading and management of AI models"""
-
+import urllib.request
 import tarfile
-import subprocess
+import shutil
 import sys
 import hashlib
 from pathlib import Path
@@ -39,17 +39,10 @@ def fetch_model(url: str, destination: Path) -> bool:
         # Create parent directories
         destination.parent.mkdir(parents=True, exist_ok=True)
         
-        # Use wget to download
-        cmd = ["wget", "-q", "--show-progress", "-O", str(destination), url]
-            
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        
-        if result.returncode == 0:
+        with urllib.request.urlopen(url) as response, open(destination, 'wb') as out_file:
+            shutil.copyfileobj(response, out_file)
             print(f"✅ Downloaded: {destination.name}")
             return True
-        else:
-            print(f"❌ Download failed: {result.stderr.strip()}")
-            return False
             
     except Exception as e:
         print(f"❌ Download error: {e}")
