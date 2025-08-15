@@ -64,15 +64,11 @@ class SenseVoiceInferenceSession:
             ],
             axis=1,
         ).astype(np.float32)
-        print(input_content.shape)
         # pad [1, len, ...] to [1, RKNN_INPUT_LEN, ... ]
         input_content = np.pad(input_content, ((0, 0), (0, RKNN_INPUT_LEN - input_content.shape[1]), (0, 0)))
-        print("padded shape:", input_content.shape)
         start_time = time.time()
         encoder_out = self.encoder.inference(inputs=[input_content])[0]
         end_time = time.time()
-        print(f"encoder inference time: {end_time - start_time:.2f} seconds")
-        # print(encoder_out)
         def unique_consecutive(arr):
             if len(arr) == 0:
                 return arr
@@ -313,7 +309,6 @@ class Transcriber:
             features = features[np.newaxis, ...]
 
         speed['feature_extraction'] = (time.time() - t1) * 1000
-        print(features.shape)
 
         t1 = time.time()
         raw_text = self.asr(
