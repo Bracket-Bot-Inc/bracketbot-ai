@@ -78,6 +78,8 @@ class Detector:
     
     def _load_model(self):
         self.rknn = RKNNLite()
+        print("Loading model from: ", self.model_path)
+        assert self.model_path.exists(), f"Model file does not exist: {self.model_path}"
         ret = self.rknn.load_rknn(str(self.model_path))
         if ret != 0: raise RuntimeError(f"Failed to load RKNN model: {ret}")
         
