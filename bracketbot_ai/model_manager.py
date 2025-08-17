@@ -55,6 +55,7 @@ def extract_archive(archive_path: Path, extract_to: Path) -> bool:
         tar = tarfile.open(archive_path)
         tar.extractall(extract_to)
         tar.close()
+        archive_path.unlink()
     except Exception as e:
         print(f"❌ Extraction error: {e}")
         return False
@@ -65,7 +66,7 @@ def ensure_model(model_name: str) -> Path:
     
     # Check if model is in our known models
     if model_name not in MODELS:
-        print(f"⚠️  Unknown audio model: {model_name}")
+        print(f"⚠️  Unknown model: {model_name}")
         print(f"Available models: {', '.join(MODELS.keys())}")
         return []
     
@@ -74,7 +75,7 @@ def ensure_model(model_name: str) -> Path:
     model_file = model_dir / f"{model_name}.rknn"
 
     if not model_file.exists():
-        print(f"📦 Audio model '{model_name}' not found, downloading...")
+        print(f"📦 Model '{model_name}' not found, downloading...")
         
         # Download model archive
         version = get_package_version()
@@ -87,14 +88,11 @@ def ensure_model(model_name: str) -> Path:
                 return []
             if not extract_archive(temp_archive, MODELS_DIR):
                 return []
-            print(f"✅ Audio model '{model_name}' successfully installed")
+            print(f"✅ Model '{model_name}' successfully installed")
             
         except Exception as e:
-            print(f"❌ Error installing audio model '{model_name}': {e}")
+            print(f"❌ Error installing model '{model_name}': {e}")
             return []
-        finally:
-            if temp_archive.exists():
-                temp_archive.unlink()
 
     model_dir = MODELS_DIR / model_name if (MODELS_DIR / model_name).is_dir() else MODELS_DIR
     return model_dir, model_file

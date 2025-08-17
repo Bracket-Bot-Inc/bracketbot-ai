@@ -1,22 +1,20 @@
-#!/usr/bin/env python3
-"""Object detection example using BracketBot AI"""
-
 # /// script
 # dependencies = [
-#   "bracketbot-ai @ /home/bracketbot/bracketbot-ai/dist/bracketbot_ai-0.0.1-py3-none-any.whl",
+#   "bracketbot-ai",
 #   "opencv-python",
 # ]
+# [tool.uv.sources]
+# bracketbot-ai = { path = "/home/bracketbot/bracketbot-ai", editable = true }
 # ///
 
 import subprocess
 from bracketbot_ai import Detector
 import cv2
 
-# Download a sample image
-subprocess.run(["wget", "https://picsum.photos/id/88/200/300", "-O", "test.jpg"])
-
 detector = Detector("yolo11s", device=0)
-img = cv2.imread("test.jpg")
-results = detector(img, conf=0.35, iou=0.1)
+results = detector(img, conf=0.35, iou=0.45)
 print("Number of detections: ", len(results))
 cv2.imwrite("test_result.jpg", results.plot())
+
+if __name__ == "__main__":
+    sys.exit(main()) 

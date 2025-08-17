@@ -352,7 +352,6 @@ class Transcriber:
             return ""
 
 def main():
-
     import scipy.signal
     import sounddevice as sd
     import soundfile as sf

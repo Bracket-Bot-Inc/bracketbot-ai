@@ -6,8 +6,11 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "kaldi-native-fbank>=1.21.3",
+    "logging>=0.4.9.6",
+    "mjpeg-streamer>=2024.2.8",
+    "opencv-python>=4.11.0.86",
     "rknn-toolkit-lite2>=2.3.2",
-    "sentencepiece>=0.2.0"
+    "sentencepiece>=0.2.0",
 ]
 
 [project.optional-dependencies]

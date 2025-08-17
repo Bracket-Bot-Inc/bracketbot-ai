@@ -117,33 +117,41 @@ version = "0.0.1"
 source = { virtual = "." }
 dependencies = [
     { name = "kaldi-native-fbank" },
+    { name = "logging" },
+    { name = "mjpeg-streamer" },
+    { name = "opencv-python" },
     { name = "rknn-toolkit-lite2" },
     { name = "sentencepiece" },
 ]
 
 [package.optional-dependencies]
-onnx = [
+examples = [
     { name = "mjpeg-streamer" },
+    { name = "sounddevice" },
+    { name = "soundfile" },
+]
+onnx = [
     { name = "onnxslim" },
     { name = "rknn-toolkit2" },
     { name = "setuptools" },
-    { name = "sounddevice" },
-    { name = "soundfile" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "kaldi-native-fbank", specifier = ">=1.21.3" },
-    { name = "mjpeg-streamer", marker = "extra == 'onnx'", specifier = ">=2024.2.8" },
+    { name = "logging", specifier = ">=0.4.9.6" },
+    { name = "mjpeg-streamer", specifier = ">=2024.2.8" },
+    { name = "mjpeg-streamer", marker = "extra == 'examples'", specifier = ">=2024.2.8" },
     { name = "onnxslim", marker = "extra == 'onnx'", specifier = ">=0.1.63" },
+    { name = "opencv-python", specifier = ">=4.11.0.86" },
     { name = "rknn-toolkit-lite2", specifier = ">=2.3.2" },
     { name = "rknn-toolkit2", marker = "extra == 'onnx'", specifier = ">=2.3.2" },
     { name = "sentencepiece", specifier = ">=0.2.0" },
     { name = "setuptools", marker = "extra == 'onnx'", specifier = ">=80.9.0" },
-    { name = "sounddevice", marker = "extra == 'onnx'", specifier = ">=0.5.2" },
-    { name = "soundfile", marker = "extra == 'onnx'", specifier = ">=0.13.1" },
+    { name = "sounddevice", marker = "extra == 'examples'", specifier = ">=0.5.2" },
+    { name = "soundfile", marker = "extra == 'examples'", specifier = ">=0.13.1" },
 ]
-provides-extras = ["onnx"]
+provides-extras = ["onnx", "examples"]
 
 [[package]]
 name = "cffi"
@@ -394,6 +402,12 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/07/3a/2dba78ac22f8befd595647e6634963dc681d2131a46fb56e6e0825387ccd/kaldi_native_fbank-1.21.3-cp313-cp313-win32.whl", hash = "sha256:e902abce892b11a1e9fc940cf101f381c63a831777b601e8ab9b7bda4b39b30d", size = 243312, upload-time = "2025-07-10T13:51:19.829Z" },
     { url = "https://files.pythonhosted.org/packages/1f/e5/2faed787577f42cb08a46634c323ce2e7a9fdc46e3fc2c72ad6603bb08f7/kaldi_native_fbank-1.21.3-cp313-cp313-win_amd64.whl", hash = "sha256:22bf27b189f1e8b3ae91376bd49b8478978167a140e341b3db4838c5ddf1b6c4", size = 273006, upload-time = "2025-07-10T13:49:55.6Z" },
 ]
+
+[[package]]
+name = "logging"
+version = "0.4.9.6"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/93/4b/979db9e44be09f71e85c9c8cfc42f258adfb7d93ce01deed2788b2948919/logging-0.4.9.6.tar.gz", hash = "sha256:26f6b50773f085042d301085bd1bf5d9f3735704db9f37c1ce6d8b85c38f2417", size = 96029, upload-time = "2013-06-04T23:43:22.086Z" }
 
 [[package]]
 name = "markupsafe"
