@@ -95,6 +95,8 @@ def ensure_model(model_name: str) -> Path:
             return []
 
     model_dir = MODELS_DIR / model_name if (MODELS_DIR / model_name).is_dir() else MODELS_DIR
+    model_file = model_dir / f"{model_name}.rknn"
+    print(f"Model directory: {model_dir}")
     return model_dir, model_file
 
 def list_available_models() -> Dict[str, List[str]]:
